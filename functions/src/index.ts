@@ -1,63 +1,102 @@
-import * as functions from 'firebase-functions';
-import * as admin     from 'firebase-admin';
-import express from 'express';
+import * as functions from 'firebase-functions'
+import * as admin from 'firebase-admin'
+import express, { Request, Response, NextFunction } from 'express'
 
-admin.initializeApp();
-const db  = admin.firestore();
-const app = express();
-app.use(express.json());
+admin.initializeApp()
+const db = admin.firestore()
 
-// 간단한 인증 미들웨어: 클라이언트가 Bearer 토큰으로 ID 토큰을 보내면 검증
-app.use(async (req, _, next) => {
-  const authHeader = req.headers.authorization?.split(' ');
-  if (authHeader?.[0] === 'Bearer' && authHeader[1]) {
+// req.uid 를 안전하게 쓰기 위한 인터페이스
+interface AuthRequest extends Request {
+  uid?: string
+}
+
+const app = express()
+app.use(express.json())
+
+// ────────────────────────────────────────────────────────────────────
+// 1) 인증 미들웨어
+// ────────────────────────────────────────────────────────────────────
+app.use(
+  async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    const header = req.headers.authorization
+    if (header?.startsWith('Bearer ')) {
+      const token = header.split('Bearer ')[1]
+      try {
+        const decoded = await admin.auth().verifyIdToken(token)
+        req.uid = decoded.uid
+      } catch (error: unknown) {
+        const msg =
+          error instanceof Error ? error.message : 'Invalid auth token'
+        return void res.status(401).send({ error: msg })
+      }
+    }
+    next()
+  }
+)
+
+// ────────────────────────────────────────────────────────────────────
+// 2) POST /api/items
+// ────────────────────────────────────────────────────────────────────
+app.post(
+  '/api/items',
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const { name, desc } = req.body
+    if (!name) {
+      return void res.status(400).send({ error: 'name required' })
+    }
+
     try {
-      const decoded = await admin.auth().verifyIdToken(authHeader[1]);
-      (req as any).uid = decoded.uid;
-    } catch {
-      return res.status(401).send({ error: 'Invalid auth token' });
+      const docRef = await db.collection('items').add({
+        name,
+        desc: desc || '',
+        createdBy: req.uid ?? null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      return void res.status(201).send({ id: docRef.id })
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error ? error.message : 'Unknown server error'
+      return void res.status(500).send({ error: msg })
     }
   }
-  next();
-});
+)
 
-/** POST /api/items
- *  새 항목 생성
- *  { name: string, desc?: string }
- */
-app.post('/api/items', async (req, res) => {
-  const { name, desc } = req.body;
-  if (!name) return res.status(400).send({ error: 'name required' });
+// ────────────────────────────────────────────────────────────────────
+// 3) PUT /api/items/:id
+// ────────────────────────────────────────────────────────────────────
+app.put(
+  '/api/items/:id',
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const { id } = req.params
+    const data = req.body
 
-  const docRef = await db.collection('items').add({
-    name,
-    desc: desc || '',
-    createdBy: (req as any).uid || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-  res.send({ id: docRef.id });
-});
-
-/** PUT /api/items/:id
- *  기존 항목 업데이트
- *  { name?: string, desc?: string }
- */
-app.put('/api/items/:id', async (req, res) => {
-  const { id } = req.params;
-  const data   = req.body;
-  try {
-    await db.collection('items').doc(id).update({
-      ...data,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    res.send({ success: true });
-  } catch (err) {
-    res.status(500).send({ error: err.message });
+    try {
+      await db
+        .collection('items')
+        .doc(id)
+        .update({
+          ...data,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      return void res.send({ success: true })
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error ? error.message : 'Unknown server error'
+      return void res.status(500).send({ error: msg })
+    }
   }
-});
+)
 
-// 기존의 /hello, /echo도 그대로 남겨 둡니다.
-app.get('/hello', (_, res) => res.send({ message: 'Hello from Firebase Functions!' }));
-app.post('/echo', (req, res) => res.send({ youSent: req.body }));
+// ────────────────────────────────────────────────────────────────────
+// 4) 기타 엔드포인트 (타입만 명시)
+// ────────────────────────────────────────────────────────────────────
+app.get('/hello', (_req: Request, res: Response): void => {
+  res.send({ message: 'Hello from Firebase Functions!' })
+})
 
-export const api = functions.https.onRequest(app);
+app.post('/echo', (req: Request, res: Response): void => {
+  res.send({ youSent: req.body })
+})
+
+// Firebase Functions 엔트리
+export const api = functions.https.onRequest(app)

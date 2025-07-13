@@ -7,6 +7,9 @@ import { globalIgnores } from 'eslint/config'
 
 export default tseslint.config([
   globalIgnores(['dist']),
+
+  // ────────────────────────────────────────────────────────────────
+  // 기존 루트 전체 TypeScript/React 설정
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +21,15 @@ export default tseslint.config([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+  },
+
+  // ────────────────────────────────────────────────────────────────
+  // functions 디렉터리 전용 오버라이드: any 허용
+  {
+    files: ['functions/src/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 ])
