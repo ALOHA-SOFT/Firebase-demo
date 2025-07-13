@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "student-firebase-demo-0712", 
     "public": "dist",
     "ignore": [
       "firebase.json",
