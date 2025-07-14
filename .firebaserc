@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "student-firebase-demo-0712"
-  }
+    "default": "student-firebase-demo-0712",
+    "firebase init emulators": "student-firebase-demo-0712"
+  },
+  "targets": {},
+  "etags": {}
 }

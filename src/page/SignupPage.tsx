@@ -1,46 +1,40 @@
 import React, { useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
-} from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, firestore } from '../firebase';
 import { useNavigate } from 'react-router-dom';
 import { doc, setDoc } from 'firebase/firestore';
+import { serverTimestamp } from 'firebase/firestore';
 
 export default function SignupPage() {
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
+  const [error, setError] = useState('');
 
-    const navigate = useNavigate()      // ← useNavigate 불러오기
-
+  const navigate = useNavigate(); // ← useNavigate 불러오기
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       // 1) 계정 생성
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
       setError('');
 
       console.log('회원가입 성공:', userCredential.user);
-      
-      // 2) Firestore에 'users/{uid}' 문서 생성
-      const uid = userCredential.user.uid;
-      await setDoc(
-        doc(firestore, 'users', uid),
-        { email: userCredential.user.email },
-        { merge: true }      // 이미 문서가 있으면 필드만 병합
-      );
+
+      // 2) Firestore 'users' 컬렉션에 사용자 문서 생성 (uid를 문서 ID로)
+      await setDoc(doc(firestore, 'users', userCredential.user.uid), {
+        email: userCredential.user.email,
+        createdAt: serverTimestamp(),
+        // name, photoURL 등 추가 정보가 있다면 넣기
+      });
 
       // 3) (선택) 곧바로 로그인 처리
       await signInWithEmailAndPassword(auth, email, password);
       console.log('자동 로그인 완료');
-      navigate('/login');
+
+      // 4) 로그인 후 이동 (예: 프로필 페이지)
+      navigate('/profile');
     } catch (err: any) {
       setError(err.message);
     }
